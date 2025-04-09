@@ -664,164 +664,518 @@
     }
     
     // 函數: 加載所有 localStorage 項目
-    function loadLocalStorageItems() {
-      const container = document.getElementById('lsm-items-container');
-      if (container) {
-        // 清空容器
-        container.innerHTML = '';
-        
-        // 更新快照
-        localStorageSnapshot = {};
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          localStorageSnapshot[key] = localStorage.getItem(key);
+// 確保加載 localStorage 項目的函數正確運行
+function loadLocalStorageItems() {
+  const container = document.getElementById('lsm-items-container');
+  if (container) {
+    // 清空容器
+    container.innerHTML = '';
+    
+    // 更新快照
+    localStorageSnapshot = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      localStorageSnapshot[key] = localStorage.getItem(key);
+    }
+    
+    if (localStorage.length === 0) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'lsm-empty';
+      emptyMsg.innerHTML = '<div>沒有 localStorage 項目</div>';
+      container.appendChild(emptyMsg);
+      return;
+    }
+    
+    // 顯示項目總數
+    const itemCount = document.createElement('div');
+    itemCount.className = 'lsm-item-count';
+    itemCount.style.padding = '0 0 12px 4px';
+    itemCount.style.fontSize = '13px';
+    itemCount.style.color = '#7f8c8d';
+    itemCount.textContent = `共 ${localStorage.length} 個項目`;
+    container.appendChild(itemCount);
+    
+    // 遍歷所有項目
+    for (let i = 0; i < localStorage.length; i++) {
+      try {
+        const key = localStorage.key(i);
+        if (key) {  // 確保 key 存在
+          const value = localStorage.getItem(key);
+          createItemElement(key, value || '', container);
         }
-        
-        if (localStorage.length === 0) {
-          const emptyMsg = document.createElement('div');
-          emptyMsg.className = 'lsm-empty';
-          emptyMsg.innerHTML = '<div>沒有 localStorage 項目</div>';
-          container.appendChild(emptyMsg);
-          return;
-        }
-        
-        // 顯示項目總數
-        addItemCount(container);
-        
-        // 遍歷所有項目
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          try {
-            const value = localStorage.getItem(key);
-            createItemElement(key, value, container);
-          } catch (error) {
-            console.error(`無法讀取 localStorage 項目 ${key}:`, error);
-          }
-        }
+      } catch (error) {
+        console.error(`無法讀取 localStorage 項目索引 ${i}:`, error);
       }
     }
     
-    // 函數: 創建每個 localStorage 項目元素
-    function createItemElement(key, value, container) {
-      const itemEl = document.createElement('div');
-      itemEl.className = 'lsm-item';
-      itemEl.setAttribute('data-key', key);
-      
-      // 項目標題
-      const itemHeader = document.createElement('div');
-      itemHeader.className = 'lsm-item-header';
-      
-      const keyEl = document.createElement('div');
-      keyEl.className = 'lsm-item-key';
-      keyEl.title = key;
-      keyEl.textContent = key;
-      
-      const expandBtn = document.createElement('div');
-      expandBtn.className = 'lsm-item-expand';
-      expandBtn.innerHTML = '▼';
-      expandBtn.onclick = function() {
-        const content = this.parentNode.nextElementSibling;
-        if (content.style.display === 'none') {
-          content.style.display = 'block';
-          this.innerHTML = '▼';
-        } else {
-          content.style.display = 'none';
-          this.innerHTML = '▶';
-        }
-      };
-      
-      itemHeader.appendChild(keyEl);
-      itemHeader.appendChild(expandBtn);
-      itemEl.appendChild(itemHeader);
-      
-      // 項目內容
-      const itemContent = document.createElement('div');
-      itemContent.className = 'lsm-item-content';
-      
-      const textarea = document.createElement('textarea');
-      textarea.className = 'lsm-textarea';
-      textarea.value = value;
-      
-      const actionButtons = document.createElement('div');
-      actionButtons.className = 'lsm-action-buttons';
-      
-      const updateBtn = document.createElement('button');
-      updateBtn.className = 'lsm-button lsm-button-update';
-      updateBtn.textContent = '更新';
-      updateBtn.onclick = function() {
-        try {
-          localStorage.setItem(key, textarea.value);
-          // 不需要手動更新視圖，因為我們已經重寫了localStorage.setItem
-          showNotification(`項目 "${key}" 已更新`, 'success');
-        } catch (error) {
-          showNotification(`更新失敗: ${error.message}`, 'error');
-        }
-      };
-      
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'lsm-button lsm-button-delete';
-      deleteBtn.textContent = '刪除';
-      deleteBtn.onclick = function() {
-        if (confirm(`確定要刪除 "${key}" 嗎？`)) {
-          try {
-            localStorage.removeItem(key);
-            // 不需要手動從視圖移除項目，因為我們已經重寫了localStorage.removeItem
-            showNotification(`項目 "${key}" 已刪除`, 'success');
-          } catch (error) {
-            showNotification(`刪除失敗: ${error.message}`, 'error');
-          }
-        }
-      };
-      
-      actionButtons.appendChild(updateBtn);
-      actionButtons.appendChild(deleteBtn);
-      
-      // 嘗試解析 JSON 值並顯示內容大小
-      const metadata = document.createElement('div');
-      metadata.className = 'lsm-metadata';
-      
-      const sizeInfo = document.createElement('div');
-      sizeInfo.className = 'lsm-metadata-item';
-      sizeInfo.textContent = `大小: ${calculateSize(value)}`;
-      metadata.appendChild(sizeInfo);
-      
-      try {
-        // 嘗試解析 JSON
-        JSON.parse(value);
-        const jsonInfo = document.createElement('div');
-        jsonInfo.className = 'lsm-metadata-item';
-        jsonInfo.textContent = 'JSON 數據';
-        metadata.appendChild(jsonInfo);
-        
-        // 添加格式化按鈕
-        const formatBtn = document.createElement('div');
-        formatBtn.className = 'lsm-metadata-item';
-        formatBtn.textContent = '格式化';
-        formatBtn.style.cursor = 'pointer';
-        formatBtn.onclick = function() {
-          try {
-            const obj = JSON.parse(textarea.value);
-            textarea.value = JSON.stringify(obj, null, 2);
-          } catch (e) {
-            showNotification('無法格式化：不是有效的 JSON', 'error');
-          }
-        };
-        metadata.appendChild(formatBtn);
-      } catch (e) {
-        // 不是 JSON，顯示類型
-        const typeInfo = document.createElement('div');
-        typeInfo.className = 'lsm-metadata-item';
-        typeInfo.textContent = `類型: ${getValueType(value)}`;
-        metadata.appendChild(typeInfo);
-      }
-      
-      itemContent.appendChild(textarea);
-      itemContent.appendChild(actionButtons);
-      itemContent.appendChild(metadata);
-      itemEl.appendChild(itemContent);
-      
-      container.appendChild(itemEl);
+    // 檢查是否有項目被添加
+    console.log(`已載入 ${container.querySelectorAll('.lsm-item').length} 個項目`);
+  } else {
+    console.error("找不到項目容器元素");
+  }
+}
+
+// 創建每個 localStorage 項目元素
+function createItemElement(key, value, container) {
+  console.log(`創建項目元素: ${key}`);
+  
+  // 主項目容器
+  const itemEl = document.createElement('div');
+  itemEl.className = 'lsm-item';
+  itemEl.setAttribute('data-key', key);
+  
+  // 項目標題
+  const itemHeader = document.createElement('div');
+  itemHeader.className = 'lsm-item-header';
+  // 確保標題可見
+  itemHeader.style.backgroundColor = '#3d566e';
+  itemHeader.style.padding = '10px 12px';
+  itemHeader.style.display = 'flex';
+  itemHeader.style.justifyContent = 'space-between';
+  itemHeader.style.alignItems = 'center';
+  itemHeader.style.cursor = 'pointer';
+  
+  const keyEl = document.createElement('div');
+  keyEl.className = 'lsm-item-key';
+  keyEl.title = key;
+  keyEl.textContent = key;
+  // 確保文字可見
+  keyEl.style.color = '#ecf0f1';
+  keyEl.style.fontWeight = '500';
+  keyEl.style.fontSize = '13px';
+  keyEl.style.wordBreak = 'break-all';
+  keyEl.style.maxWidth = '225px';
+  keyEl.style.overflow = 'hidden';
+  keyEl.style.textOverflow = 'ellipsis';
+  keyEl.style.whiteSpace = 'nowrap';
+  
+  const expandBtn = document.createElement('div');
+  expandBtn.className = 'lsm-item-expand';
+  expandBtn.innerHTML = '▶'; // 默認顯示為折疊狀態
+  expandBtn.style.color = '#bdc3c7';
+  expandBtn.style.width = '24px';
+  expandBtn.style.height = '24px';
+  expandBtn.style.display = 'flex';
+  expandBtn.style.justifyContent = 'center';
+  expandBtn.style.alignItems = 'center';
+  expandBtn.style.borderRadius = '4px';
+  expandBtn.style.cursor = 'pointer';
+  
+  // 點擊整個標題行可展開/折疊
+  itemHeader.onclick = function(e) {
+    if (e.target !== expandBtn) {
+      expandBtn.click();
     }
+  };
+  
+  expandBtn.onclick = function(e) {
+    e.stopPropagation();
+    const content = itemEl.querySelector('.lsm-item-content');
+    if (content.style.display === 'none') {
+      content.style.display = 'block';
+      this.innerHTML = '▼';
+    } else {
+      content.style.display = 'none';
+      this.innerHTML = '▶';
+    }
+  };
+  
+  itemHeader.appendChild(keyEl);
+  itemHeader.appendChild(expandBtn);
+  itemEl.appendChild(itemHeader);
+  
+  // 項目內容 (默認隱藏)
+  const itemContent = document.createElement('div');
+  itemContent.className = 'lsm-item-content';
+  itemContent.style.display = 'none'; // 默認隱藏
+  itemContent.style.padding = '12px';
+  
+  const textarea = document.createElement('textarea');
+  textarea.className = 'lsm-textarea';
+  textarea.value = value;
+  textarea.style.width = '100%';
+  textarea.style.minHeight = '80px';
+  textarea.style.padding = '10px';
+  textarea.style.backgroundColor = '#2c3e50';
+  textarea.style.border = '1px solid #3d566e';
+  textarea.style.borderRadius = '4px';
+  textarea.style.color = '#ecf0f1';
+  textarea.style.fontFamily = 'Consolas, Monaco, monospace';
+  textarea.style.fontSize = '13px';
+  textarea.style.resize = 'vertical';
+  textarea.style.marginBottom = '12px';
+  textarea.style.boxSizing = 'border-box';
+  
+  const actionButtons = document.createElement('div');
+  actionButtons.className = 'lsm-action-buttons';
+  actionButtons.style.display = 'flex';
+  actionButtons.style.justifyContent = 'space-between';
+  actionButtons.style.gap = '8px';
+  
+  const updateBtn = document.createElement('button');
+  updateBtn.className = 'lsm-button lsm-button-update';
+  updateBtn.textContent = '更新';
+  updateBtn.style.flex = '1';
+  updateBtn.style.backgroundColor = '#2ecc71';
+  updateBtn.style.color = 'white';
+  updateBtn.style.border = 'none';
+  updateBtn.style.padding = '8px 0';
+  updateBtn.style.borderRadius = '6px';
+  updateBtn.style.fontSize = '14px';
+  updateBtn.style.fontWeight = '500';
+  updateBtn.style.cursor = 'pointer';
+  
+  updateBtn.onclick = function(e) {
+    e.stopPropagation();
+    try {
+      localStorage.setItem(key, textarea.value);
+      showNotification(`項目 "${key}" 已更新`, 'success');
+    } catch (error) {
+      showNotification(`更新失敗: ${error.message}`, 'error');
+    }
+  };
+  
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'lsm-button lsm-button-delete';
+  deleteBtn.textContent = '刪除';
+  deleteBtn.style.flex = '1';
+  deleteBtn.style.backgroundColor = '#e74c3c';
+  deleteBtn.style.color = 'white';
+  deleteBtn.style.border = 'none';
+  deleteBtn.style.padding = '8px 0';
+  deleteBtn.style.borderRadius = '6px';
+  deleteBtn.style.fontSize = '14px';
+  deleteBtn.style.fontWeight = '500';
+  deleteBtn.style.cursor = 'pointer';
+  
+  deleteBtn.onclick = function(e) {
+    e.stopPropagation();
+    if (confirm(`確定要刪除 "${key}" 嗎？`)) {
+      try {
+        localStorage.removeItem(key);
+        itemEl.remove();
+        
+        // 如果刪除後沒有項目，重新加載視圖
+        if (localStorage.length === 0) {
+          loadLocalStorageItems();
+        }
+        
+        showNotification(`項目 "${key}" 已刪除`, 'success');
+      } catch (error) {
+        showNotification(`刪除失敗: ${error.message}`, 'error');
+      }
+    }
+  };
+  
+  actionButtons.appendChild(updateBtn);
+  actionButtons.appendChild(deleteBtn);
+  
+  // 嘗試解析 JSON 值並顯示內容大小
+  const metadata = document.createElement('div');
+  metadata.className = 'lsm-metadata';
+  metadata.style.display = 'flex';
+  metadata.style.gap = '8px';
+  metadata.style.fontSize = '11px';
+  metadata.style.color = '#95a5a6';
+  metadata.style.marginTop = '10px';
+  metadata.style.paddingTop = '10px';
+  metadata.style.borderTop = '1px solid #3d566e';
+  
+  const sizeInfo = document.createElement('div');
+  sizeInfo.className = 'lsm-metadata-item';
+  sizeInfo.textContent = `大小: ${calculateSize(value)}`;
+  sizeInfo.style.backgroundColor = '#2c3e50';
+  sizeInfo.style.padding = '4px 8px';
+  sizeInfo.style.borderRadius = '4px';
+  metadata.appendChild(sizeInfo);
+  
+  try {
+    // 嘗試解析 JSON
+    JSON.parse(value);
+    const jsonInfo = document.createElement('div');
+    jsonInfo.className = 'lsm-metadata-item';
+    jsonInfo.textContent = 'JSON 數據';
+    jsonInfo.style.backgroundColor = '#2c3e50';
+    jsonInfo.style.padding = '4px 8px';
+    jsonInfo.style.borderRadius = '4px';
+    metadata.appendChild(jsonInfo);
+    
+    // 添加格式化按鈕
+    const formatBtn = document.createElement('div');
+    formatBtn.className = 'lsm-metadata-item';
+    formatBtn.textContent = '格式化';
+    formatBtn.style.cursor = 'pointer';
+    formatBtn.style.backgroundColor = '#2c3e50';
+    formatBtn.style.padding = '4px 8px';
+    formatBtn.style.borderRadius = '4px';
+    formatBtn.onclick = function(e) {
+      e.stopPropagation();
+      try {
+        const obj = JSON.parse(textarea.value);
+        textarea.value = JSON.stringify(obj, null, 2);
+      } catch (e) {
+        showNotification('無法格式化：不是有效的 JSON', 'error');
+      }
+    };
+    metadata.appendChild(formatBtn);
+  } catch (e) {
+    // 不是 JSON，顯示類型
+    const typeInfo = document.createElement('div');
+    typeInfo.className = 'lsm-metadata-item';
+    typeInfo.textContent = `類型: ${getValueType(value)}`;
+    typeInfo.style.backgroundColor = '#2c3e50';
+    typeInfo.style.padding = '4px 8px';
+    typeInfo.style.borderRadius = '4px';
+    metadata.appendChild(typeInfo);
+  }
+  
+  itemContent.appendChild(textarea);
+  itemContent.appendChild(actionButtons);
+  itemContent.appendChild(metadata);
+  itemEl.appendChild(itemContent);
+  
+  // 確保項目在容器中可見
+  itemEl.style.marginBottom = '12px';
+  itemEl.style.borderRadius = '8px';
+  itemEl.style.overflow = 'hidden';
+  itemEl.style.backgroundColor = '#34495e';
+  itemEl.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+  
+  container.appendChild(itemEl);
+  console.log(`項目元素已創建: ${key}`);
+}
+    
+    // 函數: 創建每個 localStorage 項目元素
+// 函數: 創建每個 localStorage 項目元素 (預設摺疊)
+// 創建每個 localStorage 項目元素
+function createItemElement(key, value, container) {
+  console.log(`創建項目元素: ${key}`);
+  
+  // 主項目容器
+  const itemEl = document.createElement('div');
+  itemEl.className = 'lsm-item';
+  itemEl.setAttribute('data-key', key);
+  
+  // 項目標題
+  const itemHeader = document.createElement('div');
+  itemHeader.className = 'lsm-item-header';
+  // 確保標題可見
+  itemHeader.style.backgroundColor = '#3d566e';
+  itemHeader.style.padding = '10px 12px';
+  itemHeader.style.display = 'flex';
+  itemHeader.style.justifyContent = 'space-between';
+  itemHeader.style.alignItems = 'center';
+  itemHeader.style.cursor = 'pointer';
+  
+  const keyEl = document.createElement('div');
+  keyEl.className = 'lsm-item-key';
+  keyEl.title = key;
+  keyEl.textContent = key;
+  // 確保文字可見
+  keyEl.style.color = '#ecf0f1';
+  keyEl.style.fontWeight = '500';
+  keyEl.style.fontSize = '13px';
+  keyEl.style.wordBreak = 'break-all';
+  keyEl.style.maxWidth = '225px';
+  keyEl.style.overflow = 'hidden';
+  keyEl.style.textOverflow = 'ellipsis';
+  keyEl.style.whiteSpace = 'nowrap';
+  
+  const expandBtn = document.createElement('div');
+  expandBtn.className = 'lsm-item-expand';
+  expandBtn.innerHTML = '▶'; // 默認顯示為折疊狀態
+  expandBtn.style.color = '#bdc3c7';
+  expandBtn.style.width = '24px';
+  expandBtn.style.height = '24px';
+  expandBtn.style.display = 'flex';
+  expandBtn.style.justifyContent = 'center';
+  expandBtn.style.alignItems = 'center';
+  expandBtn.style.borderRadius = '4px';
+  expandBtn.style.cursor = 'pointer';
+  
+  // 點擊整個標題行可展開/折疊
+  itemHeader.onclick = function(e) {
+    if (e.target !== expandBtn) {
+      expandBtn.click();
+    }
+  };
+  
+  expandBtn.onclick = function(e) {
+    e.stopPropagation();
+    const content = itemEl.querySelector('.lsm-item-content');
+    if (content.style.display === 'none') {
+      content.style.display = 'block';
+      this.innerHTML = '▼';
+    } else {
+      content.style.display = 'none';
+      this.innerHTML = '▶';
+    }
+  };
+  
+  itemHeader.appendChild(keyEl);
+  itemHeader.appendChild(expandBtn);
+  itemEl.appendChild(itemHeader);
+  
+  // 項目內容 (默認隱藏)
+  const itemContent = document.createElement('div');
+  itemContent.className = 'lsm-item-content';
+  itemContent.style.display = 'none'; // 默認隱藏
+  itemContent.style.padding = '12px';
+  
+  const textarea = document.createElement('textarea');
+  textarea.className = 'lsm-textarea';
+  textarea.value = value;
+  textarea.style.width = '100%';
+  textarea.style.minHeight = '80px';
+  textarea.style.padding = '10px';
+  textarea.style.backgroundColor = '#2c3e50';
+  textarea.style.border = '1px solid #3d566e';
+  textarea.style.borderRadius = '4px';
+  textarea.style.color = '#ecf0f1';
+  textarea.style.fontFamily = 'Consolas, Monaco, monospace';
+  textarea.style.fontSize = '13px';
+  textarea.style.resize = 'vertical';
+  textarea.style.marginBottom = '12px';
+  textarea.style.boxSizing = 'border-box';
+  
+  const actionButtons = document.createElement('div');
+  actionButtons.className = 'lsm-action-buttons';
+  actionButtons.style.display = 'flex';
+  actionButtons.style.justifyContent = 'space-between';
+  actionButtons.style.gap = '8px';
+  
+  const updateBtn = document.createElement('button');
+  updateBtn.className = 'lsm-button lsm-button-update';
+  updateBtn.textContent = '更新';
+  updateBtn.style.flex = '1';
+  updateBtn.style.backgroundColor = '#2ecc71';
+  updateBtn.style.color = 'white';
+  updateBtn.style.border = 'none';
+  updateBtn.style.padding = '8px 0';
+  updateBtn.style.borderRadius = '6px';
+  updateBtn.style.fontSize = '14px';
+  updateBtn.style.fontWeight = '500';
+  updateBtn.style.cursor = 'pointer';
+  
+  updateBtn.onclick = function(e) {
+    e.stopPropagation();
+    try {
+      localStorage.setItem(key, textarea.value);
+      showNotification(`項目 "${key}" 已更新`, 'success');
+    } catch (error) {
+      showNotification(`更新失敗: ${error.message}`, 'error');
+    }
+  };
+  
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'lsm-button lsm-button-delete';
+  deleteBtn.textContent = '刪除';
+  deleteBtn.style.flex = '1';
+  deleteBtn.style.backgroundColor = '#e74c3c';
+  deleteBtn.style.color = 'white';
+  deleteBtn.style.border = 'none';
+  deleteBtn.style.padding = '8px 0';
+  deleteBtn.style.borderRadius = '6px';
+  deleteBtn.style.fontSize = '14px';
+  deleteBtn.style.fontWeight = '500';
+  deleteBtn.style.cursor = 'pointer';
+  
+  deleteBtn.onclick = function(e) {
+    e.stopPropagation();
+    if (confirm(`確定要刪除 "${key}" 嗎？`)) {
+      try {
+        localStorage.removeItem(key);
+        itemEl.remove();
+        
+        // 如果刪除後沒有項目，重新加載視圖
+        if (localStorage.length === 0) {
+          loadLocalStorageItems();
+        }
+        
+        showNotification(`項目 "${key}" 已刪除`, 'success');
+      } catch (error) {
+        showNotification(`刪除失敗: ${error.message}`, 'error');
+      }
+    }
+  };
+  
+  actionButtons.appendChild(updateBtn);
+  actionButtons.appendChild(deleteBtn);
+  
+  // 嘗試解析 JSON 值並顯示內容大小
+  const metadata = document.createElement('div');
+  metadata.className = 'lsm-metadata';
+  metadata.style.display = 'flex';
+  metadata.style.gap = '8px';
+  metadata.style.fontSize = '11px';
+  metadata.style.color = '#95a5a6';
+  metadata.style.marginTop = '10px';
+  metadata.style.paddingTop = '10px';
+  metadata.style.borderTop = '1px solid #3d566e';
+  
+  const sizeInfo = document.createElement('div');
+  sizeInfo.className = 'lsm-metadata-item';
+  sizeInfo.textContent = `大小: ${calculateSize(value)}`;
+  sizeInfo.style.backgroundColor = '#2c3e50';
+  sizeInfo.style.padding = '4px 8px';
+  sizeInfo.style.borderRadius = '4px';
+  metadata.appendChild(sizeInfo);
+  
+  try {
+    // 嘗試解析 JSON
+    JSON.parse(value);
+    const jsonInfo = document.createElement('div');
+    jsonInfo.className = 'lsm-metadata-item';
+    jsonInfo.textContent = 'JSON 數據';
+    jsonInfo.style.backgroundColor = '#2c3e50';
+    jsonInfo.style.padding = '4px 8px';
+    jsonInfo.style.borderRadius = '4px';
+    metadata.appendChild(jsonInfo);
+    
+    // 添加格式化按鈕
+    const formatBtn = document.createElement('div');
+    formatBtn.className = 'lsm-metadata-item';
+    formatBtn.textContent = '格式化';
+    formatBtn.style.cursor = 'pointer';
+    formatBtn.style.backgroundColor = '#2c3e50';
+    formatBtn.style.padding = '4px 8px';
+    formatBtn.style.borderRadius = '4px';
+    formatBtn.onclick = function(e) {
+      e.stopPropagation();
+      try {
+        const obj = JSON.parse(textarea.value);
+        textarea.value = JSON.stringify(obj, null, 2);
+      } catch (e) {
+        showNotification('無法格式化：不是有效的 JSON', 'error');
+      }
+    };
+    metadata.appendChild(formatBtn);
+  } catch (e) {
+    // 不是 JSON，顯示類型
+    const typeInfo = document.createElement('div');
+    typeInfo.className = 'lsm-metadata-item';
+    typeInfo.textContent = `類型: ${getValueType(value)}`;
+    typeInfo.style.backgroundColor = '#2c3e50';
+    typeInfo.style.padding = '4px 8px';
+    typeInfo.style.borderRadius = '4px';
+    metadata.appendChild(typeInfo);
+  }
+  
+  itemContent.appendChild(textarea);
+  itemContent.appendChild(actionButtons);
+  itemContent.appendChild(metadata);
+  itemEl.appendChild(itemContent);
+  
+  // 確保項目在容器中可見
+  itemEl.style.marginBottom = '12px';
+  itemEl.style.borderRadius = '8px';
+  itemEl.style.overflow = 'hidden';
+  itemEl.style.backgroundColor = '#34495e';
+  itemEl.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+  
+  container.appendChild(itemEl);
+  console.log(`項目元素已創建: ${key}`);
+}
     
     // 函數: 過濾項目
     function filterItems(searchTerm) {
