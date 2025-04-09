@@ -1,0 +1,46 @@
+// popup.html - 點擊擴充功能圖標時的彈出窗口
+<!DOCTYPE html>
+<html>
+<head>
+  <title>localStorage 管理器</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 10px;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>localStorage 管理器</h2>
+  <p>點擊下方按鈕顯示/隱藏側邊欄</p>
+  <button id="toggleSidebar">顯示側邊欄</button>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
+
+// popup.js - 彈出窗口的腳本
+document.getElementById('toggleSidebar').addEventListener('click', async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  
+  chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    function: toggleSidebar
+  });
+});
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('localStorage-manager-sidebar');
+  
+  if (sidebar) {
+    sidebar.remove();
+  } else {
+    // 使用content.js中定義的方法
+    injectSidebar();
+  }
+}
