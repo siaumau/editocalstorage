@@ -1,5 +1,13 @@
 // background.js - 背景腳本
-let sidebarActiveTabIds = new Set(); // 追蹤哪些分頁有側邊欄
+// 使用 chrome.storage.local 來儲存擴充功能的狀態
+let sidebarActiveTabIds = {};
+
+// 初始化时從儲存讀取活動標籤
+chrome.storage.local.get('sidebarActiveTabIds', (result) => {
+  if (result.sidebarActiveTabIds) {
+    sidebarActiveTabIds = result.sidebarActiveTabIds;
+  }
+});
 
 // 在擴充功能圖標被點擊時執行
 chrome.action.onClicked.addListener(async (tab) => {
@@ -24,14 +32,23 @@ chrome.action.onClicked.addListener(async (tab) => {
           return false;
         }
       });
-      sidebarActiveTabIds.delete(tab.id);
+      
+      // 從活動列表中移除該分頁
+      delete sidebarActiveTabIds[tab.id];
+      chrome.storage.local.set({ sidebarActiveTabIds });
     } else {
       // 如果側邊欄不存在，則注入它
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ["inject.js"]
       });
-      sidebarActiveTabIds.add(tab.id);
+      
+      // 將分頁添加到活動列表
+      sidebarActiveTabIds[tab.id] = {
+        url: tab.url,
+        active: true
+      };
+      chrome.storage.local.set({ sidebarActiveTabIds });
     }
   } catch (error) {
     console.error("Error:", error);
@@ -41,7 +58,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 // 監聽分頁更新事件
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // 只在頁面完全加載後且該分頁在活動列表中才重新注入側邊欄
-  if (changeInfo.status === 'complete' && sidebarActiveTabIds.has(tabId)) {
+  if (changeInfo.status === 'complete' && sidebarActiveTabIds[tabId] && sidebarActiveTabIds[tabId].active) {
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ["inject.js"]
@@ -52,5 +69,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // 監聽分頁關閉事件
 chrome.tabs.onRemoved.addListener((tabId) => {
   // 從活動列表中移除關閉的分頁
-  sidebarActiveTabIds.delete(tabId);
+  if (sidebarActiveTabIds[tabId]) {
+    delete sidebarActiveTabIds[tabId];
+    chrome.storage.local.set({ sidebarActiveTabIds });
+  }
 });

@@ -1,4 +1,4 @@
-// inject.js - 專業美化版 localStorage 管理器
+// inject.js - 專業美化版 localStorage 管理器 (實時監控更新版)
 (function() {
     // 如果已經存在側邊欄，則不重複添加
     if (document.getElementById('localStorage-manager-sidebar')) {
@@ -323,6 +323,16 @@
         border-radius: 10px;
         margin-left: 6px;
       }
+      
+      .lsm-blink {
+        animation: lsm-blink-animation 1s ease-in-out;
+      }
+      
+      @keyframes lsm-blink-animation {
+        0% { background-color: #34495e; }
+        50% { background-color: #16a085; }
+        100% { background-color: #34495e; }
+      }
     `;
     document.head.appendChild(style);
   
@@ -348,6 +358,8 @@
     closeBtn.innerHTML = '&times;';
     closeBtn.title = '關閉側邊欄';
     closeBtn.onclick = function() {
+      // 通知background.js我們關閉了側邊欄
+      chrome.runtime.sendMessage({action: "sidebarClosed"});
       sidebar.remove();
     };
     
@@ -407,38 +419,284 @@
     // 添加側邊欄到頁面
     document.body.appendChild(sidebar);
     
-    // 加載所有 localStorage 項目
+    // 保存當前的localStorage鍵值快照
+    let localStorageSnapshot = {};
+    
+    // 初始加載所有項目
     loadLocalStorageItems();
     
-    // 函數: 加載所有 localStorage 項目
-    function loadLocalStorageItems() {
-      const container = document.getElementById('lsm-items-container');
-      container.innerHTML = '';
+    // 定期檢查localStorage變化
+    const checkInterval = setInterval(checkForChanges, 1000);
+    
+    // 記錄當前的搜尋詞
+    let currentSearchTerm = '';
+    
+    // 設置搜尋事件
+    search.oninput = function() {
+      currentSearchTerm = this.value;
+      filterItems(currentSearchTerm);
+    };
+    
+    // 設置添加按鈕事件
+    addBtn.onclick = addNewItem;
+    
+    // 防止內存洩漏，當側邊欄被移除時清除間隔
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.removedNodes) {
+          if (node.id === 'localStorage-manager-sidebar') {
+            clearInterval(checkInterval);
+            observer.disconnect();
+            return;
+          }
+        }
+      }
+    });
+    
+    observer.observe(document.body, { childList: true });
+    
+    // 監聽storage事件 (其他標籤頁的變化)
+    window.addEventListener('storage', (event) => {
+      // 檢查是否是localStorage變化
+      if (event.storageArea === localStorage) {
+        // 更新特定項目或重新加載所有項目
+        updateItemIfExists(event.key, event.newValue);
+      }
+    });
+    
+    // 監聽外部頁面的localStorage變化 (當前頁面中的JS操作)
+    const originalSetItem = localStorage.setItem;
+    localStorage.setItem = function(key, value) {
+      // 調用原始方法
+      originalSetItem.apply(this, arguments);
+      // 更新管理器視圖
+      updateItemIfExists(key, value);
+    };
+    
+    const originalRemoveItem = localStorage.removeItem;
+    localStorage.removeItem = function(key) {
+      // 調用原始方法
+      originalRemoveItem.apply(this, arguments);
+      // 從管理器中移除
+      removeItemFromView(key);
+    };
+    
+    const originalClear = localStorage.clear;
+    localStorage.clear = function() {
+      // 調用原始方法
+      originalClear.apply(this, arguments);
+      // 清空管理器視圖
+      loadLocalStorageItems();
+    };
+    
+    // 函數: 檢查localStorage變化
+    function checkForChanges() {
+      // 獲取當前所有鍵
+      const currentKeys = Object.keys(localStorage);
+      const snapshotKeys = Object.keys(localStorageSnapshot);
       
-      if (localStorage.length === 0) {
-        const emptyMsg = document.createElement('div');
-        emptyMsg.className = 'lsm-empty';
-        emptyMsg.innerHTML = '<div>沒有 localStorage 項目</div>';
-        container.appendChild(emptyMsg);
-        return;
+      // 檢查是否有新增或修改的項目
+      let hasChanges = false;
+      
+      // 檢查新增或修改的項目
+      for (const key of currentKeys) {
+        const currentValue = localStorage.getItem(key);
+        
+        // 如果是新項目或值已變更
+        if (!localStorageSnapshot.hasOwnProperty(key) || localStorageSnapshot[key] !== currentValue) {
+          localStorageSnapshot[key] = currentValue;
+          updateItemIfExists(key, currentValue);
+          hasChanges = true;
+        }
       }
       
-      // 顯示項目總數
+      // 檢查刪除的項目
+      for (const key of snapshotKeys) {
+        if (!currentKeys.includes(key)) {
+          delete localStorageSnapshot[key];
+          removeItemFromView(key);
+          hasChanges = true;
+        }
+      }
+      
+      // 如果有變化，重新應用搜尋過濾
+      if (hasChanges && currentSearchTerm) {
+        filterItems(currentSearchTerm);
+      }
+    }
+    
+    // 函數: 更新特定項目
+    function updateItemIfExists(key, value) {
+      // 更新快照
+      localStorageSnapshot[key] = value;
+      
+      // 檢查項目是否存在於視圖中
+      const existingItem = document.querySelector(`.lsm-item[data-key="${CSS.escape(key)}"]`);
+      
+      if (existingItem) {
+        // 更新已有項目的值
+        const textarea = existingItem.querySelector('.lsm-textarea');
+        if (textarea && textarea.value !== value) {
+          textarea.value = value;
+          
+          // 更新元數據
+          updateItemMetadata(existingItem, value);
+          
+          // 添加閃爍效果以提示更新
+          existingItem.classList.add('lsm-blink');
+          setTimeout(() => {
+            existingItem.classList.remove('lsm-blink');
+          }, 1000);
+        }
+      } else {
+        // 如果項目不存在於視圖中，則添加新項目
+        const container = document.getElementById('lsm-items-container');
+        if (container) {
+          // 如果之前是空的，先清空容器
+          if (container.querySelector('.lsm-empty')) {
+            container.innerHTML = '';
+            // 添加項目計數
+            addItemCount(container);
+          }
+          
+          // 創建新項目
+          createItemElement(key, value, container);
+          
+          // 更新項目計數
+          updateItemCount();
+        }
+      }
+    }
+    
+    // 函數: 從視圖中移除項目
+    function removeItemFromView(key) {
+      // 從快照中刪除
+      delete localStorageSnapshot[key];
+      
+      // 從視圖中刪除
+      const existingItem = document.querySelector(`.lsm-item[data-key="${CSS.escape(key)}"]`);
+      if (existingItem) {
+        existingItem.remove();
+        
+        // 如果沒有項目了，顯示空訊息
+        if (localStorage.length === 0) {
+          loadLocalStorageItems();
+        } else {
+          // 更新項目計數
+          updateItemCount();
+        }
+      }
+    }
+    
+    // 函數: 添加項目計數
+    function addItemCount(container) {
       const itemCount = document.createElement('div');
+      itemCount.className = 'lsm-item-count';
       itemCount.style.padding = '0 0 12px 4px';
       itemCount.style.fontSize = '13px';
       itemCount.style.color = '#7f8c8d';
       itemCount.textContent = `共 ${localStorage.length} 個項目`;
       container.appendChild(itemCount);
-      
-      // 遍歷所有項目
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
+    }
+    
+    // 函數: 更新項目計數
+    function updateItemCount() {
+      const itemCount = document.querySelector('.lsm-item-count');
+      if (itemCount) {
+        if (currentSearchTerm) {
+          const visibleItems = document.querySelectorAll('.lsm-item:not([style*="display: none"])').length;
+          itemCount.textContent = `找到 ${visibleItems} / ${localStorage.length} 個項目`;
+        } else {
+          itemCount.textContent = `共 ${localStorage.length} 個項目`;
+        }
+      }
+    }
+    
+    // 函數: 更新項目元數據
+    function updateItemMetadata(itemElement, value) {
+      const metadata = itemElement.querySelector('.lsm-metadata');
+      if (metadata) {
+        // 更新大小信息
+        const sizeInfo = metadata.querySelector('.lsm-metadata-item:first-child');
+        if (sizeInfo) {
+          sizeInfo.textContent = `大小: ${calculateSize(value)}`;
+        }
+        
+        // 嘗試判斷是否為JSON
         try {
-          const value = localStorage.getItem(key);
-          createItemElement(key, value, container);
-        } catch (error) {
-          console.error(`無法讀取 localStorage 項目 ${key}:`, error);
+          JSON.parse(value);
+          // 確保有JSON標記
+          if (!metadata.querySelector('.lsm-metadata-item:nth-child(2)')) {
+            const jsonInfo = document.createElement('div');
+            jsonInfo.className = 'lsm-metadata-item';
+            jsonInfo.textContent = 'JSON 數據';
+            metadata.appendChild(jsonInfo);
+            
+            const formatBtn = document.createElement('div');
+            formatBtn.className = 'lsm-metadata-item';
+            formatBtn.textContent = '格式化';
+            formatBtn.style.cursor = 'pointer';
+            formatBtn.onclick = function() {
+              try {
+                const textarea = itemElement.querySelector('.lsm-textarea');
+                const obj = JSON.parse(textarea.value);
+                textarea.value = JSON.stringify(obj, null, 2);
+              } catch (e) {
+                showNotification('無法格式化：不是有效的 JSON', 'error');
+              }
+            };
+            metadata.appendChild(formatBtn);
+          }
+        } catch (e) {
+          // 不是JSON，更新類型信息
+          const typeInfo = metadata.querySelector('.lsm-metadata-item:nth-child(2)');
+          if (typeInfo) {
+            typeInfo.textContent = `類型: ${getValueType(value)}`;
+          }
+          
+          // 移除格式化按鈕，如果存在
+          const formatBtn = metadata.querySelector('.lsm-metadata-item:nth-child(3)');
+          if (formatBtn) {
+            formatBtn.remove();
+          }
+        }
+      }
+    }
+    
+    // 函數: 加載所有 localStorage 項目
+    function loadLocalStorageItems() {
+      const container = document.getElementById('lsm-items-container');
+      if (container) {
+        // 清空容器
+        container.innerHTML = '';
+        
+        // 更新快照
+        localStorageSnapshot = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          localStorageSnapshot[key] = localStorage.getItem(key);
+        }
+        
+        if (localStorage.length === 0) {
+          const emptyMsg = document.createElement('div');
+          emptyMsg.className = 'lsm-empty';
+          emptyMsg.innerHTML = '<div>沒有 localStorage 項目</div>';
+          container.appendChild(emptyMsg);
+          return;
+        }
+        
+        // 顯示項目總數
+        addItemCount(container);
+        
+        // 遍歷所有項目
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          try {
+            const value = localStorage.getItem(key);
+            createItemElement(key, value, container);
+          } catch (error) {
+            console.error(`無法讀取 localStorage 項目 ${key}:`, error);
+          }
         }
       }
     }
@@ -493,6 +751,7 @@
       updateBtn.onclick = function() {
         try {
           localStorage.setItem(key, textarea.value);
+          // 不需要手動更新視圖，因為我們已經重寫了localStorage.setItem
           showNotification(`項目 "${key}" 已更新`, 'success');
         } catch (error) {
           showNotification(`更新失敗: ${error.message}`, 'error');
@@ -506,13 +765,7 @@
         if (confirm(`確定要刪除 "${key}" 嗎？`)) {
           try {
             localStorage.removeItem(key);
-            itemEl.remove();
-            
-            // 如果刪除後沒有項目，重新加載視圖
-            if (localStorage.length === 0) {
-              loadLocalStorageItems();
-            }
-            
+            // 不需要手動從視圖移除項目，因為我們已經重寫了localStorage.removeItem
             showNotification(`項目 "${key}" 已刪除`, 'success');
           } catch (error) {
             showNotification(`刪除失敗: ${error.message}`, 'error');
@@ -572,6 +825,7 @@
     
     // 函數: 過濾項目
     function filterItems(searchTerm) {
+      currentSearchTerm = searchTerm;
       searchTerm = searchTerm.toLowerCase();
       const items = document.querySelectorAll('.lsm-item');
       let visibleCount = 0;
@@ -587,14 +841,7 @@
       });
       
       // 更新搜尋結果計數
-      const itemCount = document.querySelector('#lsm-items-container > div:first-child');
-      if (itemCount) {
-        if (searchTerm) {
-          itemCount.textContent = `找到 ${visibleCount} / ${localStorage.length} 個項目`;
-        } else {
-          itemCount.textContent = `共 ${localStorage.length} 個項目`;
-        }
-      }
+      updateItemCount();
     }
     
     // 函數: 添加新項目
@@ -722,7 +969,7 @@
         
         try {
           localStorage.setItem(key, value);
-          loadLocalStorageItems();
+          // 不需要手動更新視圖，因為我們已經重寫了localStorage.setItem
           showNotification(`項目 "${key}" 已保存`, 'success');
           overlay.remove();
         } catch (error) {
@@ -780,5 +1027,12 @@
       if (/^(true|false)$/.test(value)) return '布林值';
       if (value.length > 100) return '文本 (長)';
       return '文本';
+    }
+    
+    // 通知background.js側邊欄已加載
+    try {
+      chrome.runtime.sendMessage({action: "sidebarLoaded"});
+    } catch (e) {
+      console.log("無法與擴充功能通信:", e);
     }
   })();
