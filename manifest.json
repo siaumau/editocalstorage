@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "localStorage Manager",
+  "name": "LocalStorage Manager",
   "version": "1.0",
   "description": "管理網站的localStorage，可以查詢、新增、修改和刪除項目",
   "permissions": ["storage", "activeTab", "scripting", "tabs"],
